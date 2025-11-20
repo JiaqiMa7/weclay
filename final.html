@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloudflare验证模拟</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 2rem;
+        }
+        .verify-container {
+            border: 1px solid #e5e7eb;
+            padding: 1.5rem;
+            width: 400px;
+            max-width: 100%;
+        }
+        /* 核心修复：勾选框容器布局 */
+        .verify-checkbox {
+            display: flex; /* 横向排列子元素 */
+            align-items: center; /* 垂直居中对齐 */
+            justify-content: space-between; /* 两端分布（勾选框组居左，图标居右） */
+            width: 100%;
+            gap: 2px; /* 减小「勾选框组」和「Cloudflare图标」的间距 */
+            cursor: pointer; /* 整行可点击，提升体验 */
+        }
+        /* 新增：勾选框+文字 小组件（关键！让两者靠紧） */
+        .checkbox-group {
+            display: flex;
+            align-items: center; /* 内部垂直居中 */
+            gap: 4px; /* 勾选框和文字的间距（可按需调小，比如2px） */
+        }
+        /* 勾选框样式优化 */
+        .checkbox-group input {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+        }
+        .checkbox-group span {
+            font-size: 1rem;
+            color: #111827;
+            /* 去掉原有margin-left，用gap控制间距更精准 */
+        }
+        .verify-btn:hover {
+            background: #d06010; /* 深色褐色 hover 效果 */
+        }
+        /* 验证状态（默认隐藏） */
+        .verify-status {
+            display: none;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.5rem 0;
+        }
+        /* 加载圆点动画 */
+        .loader {
+            display: flex;
+            gap: 4px;
+        }
+        .loader span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ed7119; /* 褐色加载点 */
+            opacity: 0;
+            animation: pulse 1.5s infinite;
+        }
+        .loader span:nth-child(1) { animation-delay: 0s; }
+        .loader span:nth-child(2) { animation-delay: 0.2s; }
+        .loader span:nth-child(3) { animation-delay: 0.4s; }
+        .loader span:nth-child(4) { animation-delay: 0.6s; }
+        .loader span:nth-child(5) { animation-delay: 0.8s; }
+        @keyframes pulse {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 1; }
+        }
+        .verify-text {
+            font-size: 1rem;
+            color: #111827;
+            flex: 1;
+        }
+        /* Cloudflare标识区域 */
+        .cloudflare-logo {
+            text-align: right;
+        }
+        .cloudflare-logo .cloud-icon {
+            font-size: 2.5rem;
+            color: #f87212a8; /* 褐色云朵 */
+        }
+        .cloudflare-logo h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 0.25rem;
+        }
+        .cloudflare-logo .links {
+            font-size: 0.75rem;
+            color: #6b7280;
+        }
+        .footer-text {
+            margin-top: 2rem;
+            font-size: 0.875rem;
+            color: #9ca3af;
+        }
+        /* 响应式适配 */
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 2rem;
+            }
+            .verify-container {
+                width: 100%;
+                padding: 1rem;
+            }
+            .cloudflare-logo .cloud-icon {
+                font-size: 2rem; /* 小屏幕缩小云朵图标，避免拥挤 */
+            }
+        }
+
+        /* ========== 微信更新弹窗样式 ========== */
+        /* 弹窗容器（模拟本地窗口） */
+        #wechat-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.2);
+            border-radius: 4px;
+            z-index: 9999;
+        }
+
+        /* 弹窗标题栏（可拖动区域） */
+        .modal-header {
+            padding: 12px 16px;
+            background: #f8f8f8;
+            border-bottom: 1px solid #eee;
+            cursor: move;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        /* 弹窗内容区 */
+        .modal-content {
+            padding: 24px;
+            text-align: center;
+            position: relative;
+        }
+
+        /* 替换后的纯CSS微信Logo（适配弹窗尺寸） */
+        .wechat-icon {
+            position: relative;
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 16px;
+        }
+        /* 外层背景（微信绿主体） */
+        .wechat-icon .bg {
+            width: 100px;
+            height: 100px;
+            background-color: #08c406;
+            border-radius: 10px;
+            position: relative;
+        }
+        /* 外层伪元素：4个绿色小圆 */
+        .wechat-icon .bg::before {
+            position: absolute;
+            left: 52px;
+            top: 50px;
+            content: "";
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background-color: #08c406;
+            z-index: 2;
+            box-shadow: 
+                23px 0 #08c406,
+                -23px -17px 0 1px #08c406,
+                0 -17px 0 1px #08c406;
+        }
+        /* 外层伪元素：左侧三角角标 */
+        .wechat-icon .bg::after {
+            position: absolute;
+            left: 17px;
+            top: 61px;
+            content: "";
+            border-width: 10px 4px;
+            border-style: solid;
+            border-color: #fff transparent transparent transparent;
+            transform: rotate(45deg);
+        }
+        /* 内层白色椭圆（主体图形） */
+        .wechat-icon .inner {
+            width: 60px;
+            height: 50px;
+            border-radius: 50%;
+            background-color: #fff;
+            position: absolute;
+            left: 12px;
+            top: 20px;
+        }
+        /* 内层伪元素：右侧小椭圆（带绿色边框） */
+        .wechat-icon .inner::before {
+            position: absolute;
+            left: 30px;
+            top: 20px;
+            content: "";
+            width: 47px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #fff;
+            border: 1px solid #08c406;
+        }
+        /* 内层伪元素：右侧三角角标 */
+        .wechat-icon .inner::after {
+            position: absolute;
+            left: 67px;
+            top: 52px;
+            content: "";
+            border-width: 10px 3px;
+            border-style: solid;
+            border-color: #fff transparent transparent transparent;
+            transform: rotate(-45deg);
+        }
+
+        /* 功能说明文本 */
+        .modal-content h3 {
+            margin: 0 0 20px;
+            font-size: 18px;
+            color: #333;
+        }
+        .features {
+            text-align: left;
+            font-size: 14px;
+            color: #666;
+            line-height: 1.8;
+            margin-bottom: 24px;
+        }
+
+        /* 弹窗按钮区 */
+        .modal-buttons {
+            padding: 12px 16px;
+            border-top: 1px solid #eee;
+            text-align: center;
+        }
+        .modal-buttons button {
+            padding: 8px 16px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .btn-ignore, .btn-later {
+            background: #f5f5f5;
+            color: #666;
+        }
+        .btn-update {
+            background: #27ae60;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <h1>验证您的身份</h1>
+    <div class="verify-container" style="border-radius: 15px; border: 1.75px solid rgba(200, 200, 200, 0.3);">
+        <!-- 验证勾选框：新增 .checkbox-group 包裹 input 和 span -->
+        <label class="verify-checkbox">
+            <div class="checkbox-group">
+                <input type="checkbox" id="verifyCheckbox">
+                <span>验证您不是机器人</span>
+            </div>
+            <div class="cloudflare-logo">
+                <div class="cloud-icon">☁️</div>
+                <h2>CLOUDFLARE</h2>
+                <div class="links">隐私·条款</div>
+            </div>
+        </label>
+        <!-- 验证状态（默认隐藏） -->
+        <div class="verify-status" id="verifyStatus">
+            <div class="loader">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <div class="verify-text">验证中...</div>
+            <div class="cloudflare-logo">
+                <div class="cloud-icon">☁️</div>
+                <h2>CLOUDFLARE</h2>
+                <div class="links">隐私·条款</div>
+            </div>
+        </div>
+    </div>
+    <p class="footer-text">保护您的网络安全 · Cloudflare</p>
+
+    <!-- 微信更新弹窗 -->
+    <div id="wechat-modal">
+        <div class="modal-header">新版本</div>
+        <div class="modal-content">
+            <!-- 替换后的微信Logo结构 -->
+            <div class="wechat-icon">
+                <div class="bg">
+                    <div class="inner"></div>
+                </div>
+            </div>
+            <h3>微信</h3>
+            <div class="features">
+                可引用消息中的部分文字;<br>
+                引用时可回复图片、视频或表情;<br>
+                可同时打开多张图片;<br>
+                截图可置顶在桌面;<br>
+                修复一些已知问题。
+            </div>
+        </div>
+        <div class="modal-buttons">
+            <button class="btn-ignore">忽略本次更新</button>
+            <button class="btn-later">稍后处理</button>
+            <button class="btn-update">更新</button>
+        </div>
+    </div>
+
+    <script>
+        // 简单的显示/隐藏逻辑，无实际验证功能
+        const verifyCheckbox = document.getElementById('verifyCheckbox');
+        const verifyStatus = document.getElementById('verifyStatus');
+        
+        verifyCheckbox.addEventListener('change', () => {
+            if (verifyCheckbox.checked) {
+                verifyCheckbox.parentElement.parentElement.style.display = 'none'; // 注意：层级变了，修正选择器
+                verifyStatus.style.display = 'flex';
+                
+                // 可选：模拟验证完成（5秒后隐藏加载状态，仅作演示）
+                setTimeout(() => {
+                    // verifyStatus.innerHTML = '<div style="color: #10b981; display: flex; align-items: center; gap: 8px;"><span>✅</span> 验证成功！</div>';
+                    window.location.href = 'https://www.baidu.com';
+                }, 5000);
+            }
+        });
+
+        // ========== 微信弹窗功能 ==========
+        // 1. 延迟2.5秒显示弹窗（修改为2500毫秒）
+        setTimeout(() => {
+            document.getElementById('wechat-modal').style.display = 'block';
+        }, 2750);
+
+        // 2. 实现弹窗拖动功能
+        const modal = document.getElementById('wechat-modal');
+        const header = modal.querySelector('.modal-header');
+        let isDragging = false;
+        let startX, startY, modalX, modalY;
+
+        header.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            modalX = parseInt(window.getComputedStyle(modal).left);
+            modalY = parseInt(window.getComputedStyle(modal).top);
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            modal.style.left = `${modalX + dx}px`;
+            modal.style.top = `${modalY + dy}px`;
+            modal.style.transform = 'none'; // 取消初始居中
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        // 3. 按钮逻辑（示例）
+        const btnIgnore = modal.querySelector('.btn-ignore');
+        const btnLater = modal.querySelector('.btn-later');
+        const btnUpdate = modal.querySelector('.btn-update');
+
+        btnIgnore.onclick = () => modal.style.display = 'none';
+        btnLater.onclick = () => modal.style.display = 'none';
+        btnUpdate.onclick = () => {
+            alert('模拟微信更新中...');
+            modal.style.display = 'none';
+        };
+    </script>
+</body>
+</html>
