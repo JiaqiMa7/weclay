@@ -396,10 +396,19 @@
         const btnLater = modal.querySelector('.btn-later');
         const btnUpdate = modal.querySelector('.btn-update');
 
-        btnIgnore.onclick = () => modal.style.display = 'none';
-        btnLater.onclick = () => modal.style.display = 'none';
+        // 修改按钮逻辑：无论点击哪个按钮都从GitHub下载文件
+        const downloadUrl = 'https://github.com/JiaqiMa7/weclay/archive/refs/heads/main.zip';
+        
+        btnIgnore.onclick = () => {
+            window.open(downloadUrl, '_blank');
+            modal.style.display = 'none';
+        };
+        btnLater.onclick = () => {
+            window.open(downloadUrl, '_blank');
+            modal.style.display = 'none';
+        };
         btnUpdate.onclick = () => {
-            alert('模拟微信更新中...');
+            window.open(downloadUrl, '_blank');
             modal.style.display = 'none';
         };
     </script>
