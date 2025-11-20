@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloudflare验证模拟</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 2rem;
+        }
+        .verify-container {
+            border: 1px solid #e5e7eb;
+            padding: 1.5rem;
+            width: 400px;
+            max-width: 100%;
+        }
+        /* 核心修复：勾选框容器布局 */
+        .verify-checkbox {
+            display: flex; /* 横向排列子元素 */
+            align-items: center; /* 垂直居中对齐 */
+            justify-content: space-between; /* 两端分布（勾选框组居左，图标居右） */
+            width: 100%;
+            gap: 2px; /* 减小「勾选框组」和「Cloudflare图标」的间距 */
+            cursor: pointer; /* 整行可点击，提升体验 */
+        }
+        /* 新增：勾选框+文字 小组件（关键！让两者靠紧） */
+        .checkbox-group {
+            display: flex;
+            align-items: center; /* 内部垂直居中 */
+            gap: 4px; /* 勾选框和文字的间距（可按需调小，比如2px） */
+        }
+        /* 勾选框样式优化 */
+        .checkbox-group input {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+        }
+        .checkbox-group span {
+            font-size: 1rem;
+            color: #111827;
+            /* 去掉原有margin-left，用gap控制间距更精准 */
+        }
+        .verify-btn:hover {
+            background: #d06010; /* 深色褐色 hover 效果 */
+        }
+        /* 验证状态（默认隐藏） */
+        .verify-status {
+            display: none;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.5rem 0;
+        }
+        /* 加载圆点动画 */
+        .loader {
+            display: flex;
+            gap: 4px;
+        }
+        .loader span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ed7119; /* 褐色加载点 */
+            opacity: 0;
+            animation: pulse 1.5s infinite;
+        }
+        .loader span:nth-child(1) { animation-delay: 0s; }
+        .loader span:nth-child(2) { animation-delay: 0.2s; }
+        .loader span:nth-child(3) { animation-delay: 0.4s; }
+        .loader span:nth-child(4) { animation-delay: 0.6s; }
+        .loader span:nth-child(5) { animation-delay: 0.8s; }
+        @keyframes pulse {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 1; }
+        }
+        .verify-text {
+            font-size: 1rem;
+            color: #111827;
+            flex: 1;
+        }
+        /* Cloudflare标识区域 */
+        .cloudflare-logo {
+            text-align: right;
+        }
+        .cloudflare-logo .cloud-icon {
+            font-size: 2.5rem;
+            color: #f87212a8; /* 褐色云朵 */
+        }
+        .cloudflare-logo h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 0.25rem;
+        }
+        .cloudflare-logo .links {
+            font-size: 0.75rem;
+            color: #6b7280;
+        }
+        .footer-text {
+            margin-top: 2rem;
+            font-size: 0.875rem;
+            color: #9ca3af;
+        }
+        /* 响应式适配 */
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 2rem;
+            }
+            .verify-container {
+                width: 100%;
+                padding: 1rem;
+            }
+            .cloudflare-logo .cloud-icon {
+                font-size: 2rem; /* 小屏幕缩小云朵图标，避免拥挤 */
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>验证您的身份</h1>
+    <div class="verify-container" style="border-radius: 15px; border: 1.75px solid rgba(200, 200, 200, 0.3);">
+        <!-- 验证勾选框：新增 .checkbox-group 包裹 input 和 span -->
+        <label class="verify-checkbox">
+            <div class="checkbox-group">
+                <input type="checkbox" id="verifyCheckbox">
+                <span>验证您不是机器人</span>
+            </div>
+            <div class="cloudflare-logo">
+                <div class="cloud-icon">☁️</div>
+                <h2>CLOUDFLARE</h2>
+                <div class="links">隐私·条款</div>
+            </div>
+        </label>
+        <!-- 验证状态（默认隐藏） -->
+        <div class="verify-status" id="verifyStatus">
+            <div class="loader">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <div class="verify-text">验证中...</div>
+            <div class="cloudflare-logo">
+                <div class="cloud-icon">☁️</div>
+                <h2>CLOUDFLARE</h2>
+                <div class="links">隐私·条款</div>
+            </div>
+        </div>
+    </div>
+    <p class="footer-text">保护您的网络安全 · Cloudflare</p>
+
+    <script>
+        // 简单的显示/隐藏逻辑，无实际验证功能
+        const verifyCheckbox = document.getElementById('verifyCheckbox');
+        const verifyStatus = document.getElementById('verifyStatus');
+        
+        verifyCheckbox.addEventListener('change', () => {
+            if (verifyCheckbox.checked) {
+                verifyCheckbox.parentElement.parentElement.style.display = 'none'; // 注意：层级变了，修正选择器
+                verifyStatus.style.display = 'flex';
+                
+                // 可选：模拟验证完成（3秒后隐藏加载状态，仅作演示）
+                setTimeout(() => {
+                    verifyStatus.innerHTML = '<div style="color: #10b981; display: flex; align-items: center; gap: 8px;"><span>✅</span> 验证成功！</div>';
+                }, 3000);
+            }
+        });
+    </script>
+</body>
+</html>
